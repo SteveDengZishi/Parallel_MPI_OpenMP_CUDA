@@ -20,7 +20,7 @@ float* b;  /* The constants */
 
 float* _error; // depending on how many lines is it taking in
 float* _x;  //local x, depending on how many lines
-bool calculated_error = false; // The calculated error
+int calculated_error = 0; // The calculated error
 
 int lines;
 int send_count;
@@ -145,10 +145,10 @@ void get_input(char filename[])
 }
 
 //checking all lines in current process for whether error falls into acceptable range
-bool check_error(){
-    bool stop_proc = true;
+int check_error(){
+    int stop_proc = 1;
     for(i=0;i<lines;i++){
-        if (_error[i]>error) stop_proc = false;
+        if (_error[i]>error) stop_proc = 0;
     }
     return stop_proc;
 }
@@ -161,11 +161,11 @@ int main(int argc, char *argv[])
 {
 
     //mpi program init
-    MPI_Init(argc, argv);
+    MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
-    MPI_Comm_size(MPI_COMM_WORLD, &my_rank);
+    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
-    if( argc != 2){
+    if(argc != 2){
         printf("Usage: ./gsref filename\n");
         exit(1);
     }
@@ -173,6 +173,7 @@ int main(int argc, char *argv[])
     //Read for all processes to prevent communication
     get_input(argv[1]);
 
+    printf("it is good so far from process %d\n", my_rank);
     /* Check for convergence condition */
     /* This function will exit the program if the coffeicient will never converge to
      * the needed absolute error.
@@ -187,10 +188,10 @@ int main(int argc, char *argv[])
 
     //allocate memory for all local vars according to lines
     _error = malloc(lines*sizeof(float));
-    _x = malloc(lines*sizeof(float))
+    _x = malloc(lines*sizeof(float));
 
     //in different processes, use vars according to bounds
-    while(calculated_error == false){
+    while(calculated_error == 0){
         //if there is one error does not satisfy the requirement, go to the next iteration
         nit++;
         int offset = my_rank * lines;
@@ -208,12 +209,13 @@ int main(int argc, char *argv[])
         calculated_error = check_error();
 
         //gather all values from x to update in the next iteration
-        MPI_Allgather(_x,lines,MPI_DOUBLE,x,lines,MPI_DOUBLE,MPI_COMM_WORLD);
+        MPI_Allgather(&_x,lines,MPI_DOUBLE,&x,lines,MPI_DOUBLE,MPI_COMM_WORLD);
     }
 
     //after the loop finished, all processes reaches criteria for all lines
     //call reduce to get the maximum number of iterations
-    MPI_Reduce(&nit,&nit,1,MPI_INT,MPI_MAX,0,MPI_COMM_WORLD);
+    int max;
+    MPI_Reduce(&nit,&max,1,MPI_INT,MPI_MAX,0,MPI_COMM_WORLD);
 
     //master process write to files
     if(my_rank==0)
@@ -230,7 +232,7 @@ int main(int argc, char *argv[])
         for( i = 0; i < num; i++)
             fprintf(fp,"%f\n",x[i]);
 
-        printf("total number of iterations: %d\n", nit);
+        printf("total number of iterations: %d\n", max);
 
         fclose(fp);
 
