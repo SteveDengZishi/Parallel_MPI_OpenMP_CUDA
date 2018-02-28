@@ -4,15 +4,26 @@
 #include <mpi.h>
 
 /*** Skeleton for Lab 1 ***/
+int i;
+int nit = 0; /* number of iterations */
+FILE * fp;
+char output[100] ="";
+int comm_sz;
+int my_rank;
+float error; /* The absolute relative error */
+int num = 0;  /* number of unknowns */
 
 /***** Globals ******/
 float** a; /* The coefficients */
 float* x;  /* The unknowns */
 float* b;  /* The constants */
-float error; /* The absolute relative error */
-int num = 0;  /* number of unknowns */
 
+float* _error; // depending on how many lines is it taking in
+float* _x;  //local x, depending on how many lines
+bool calculated_error = false; // The calculated error
 
+int lines;
+int send_count;
 
 /* Function definitions: functions are ordered alphabetically ****/
 /*****************************************************************/
@@ -133,6 +144,15 @@ void get_input(char filename[])
 
 }
 
+//checking all lines in current process for whether error falls into acceptable range
+bool check_error(){
+    bool stop_proc = true;
+    for(i=0;i<lines;i++){
+        if (_error[i]>error) stop_proc = false;
+    }
+    return stop_proc;
+}
+
 
 /************************************************************/
 
@@ -140,69 +160,60 @@ void get_input(char filename[])
 int main(int argc, char *argv[])
 {
 
-    int i;
-    int nit = 0; /* number of iterations */
-    FILE * fp;
-    char output[100] ="";
-    int comm_sz;
-    int my_rank;
-    double** _a;
-    double* _x;
-    double* _b;
-
     //mpi program init
     MPI_Init(argc, argv);
     MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
     MPI_Comm_size(MPI_COMM_WORLD, &my_rank);
 
-    //calculating task for each processes
-    int lines = num/comm_sz;
-    int send_count = lines*num;
-
-    //allocating local variables for each processes
-    _a = malloc(lines*sizeof(double*));
-    for(i=0;i<lines;i++){
-        _a[i]=malloc(num*sizeof(double));
+    if( argc != 2){
+        printf("Usage: ./gsref filename\n");
+        exit(1);
     }
 
-    _x = malloc(num*sizeof(double));
-    _b = malloc(lines*sizeof(double));
+    //Read for all processes to prevent communication
+    get_input(argv[1]);
 
+    /* Check for convergence condition */
+    /* This function will exit the program if the coffeicient will never converge to
+     * the needed absolute error.
+     * This is not expected to happen for this programming assignment.
+     */
+    check_matrix();
 
-    //master program taking input, check convergence and scatter vectors to all processes
-    if (my_rank==0)
-    {
-        if( argc != 2)
-        {
-            printf("Usage: ./gsref filename\n");
-            exit(1);
+    //calculating task for each processes
+    //only after get_input so num & error is defined
+    lines = num/comm_sz;
+    send_count = lines*num;
+
+    //allocate memory for all local vars according to lines
+    _error = malloc(lines*sizeof(float));
+    _x = malloc(lines*sizeof(float))
+
+    //in different processes, use vars according to bounds
+    while(calculated_error == false){
+        //if there is one error does not satisfy the requirement, go to the next iteration
+        nit++;
+        int offset = my_rank * lines;
+        for(i=0;i<lines;i++){
+            if(_error[i]<=error) continue;
+            float sum = 0; int j;
+            for(j=0;j<num;j++){
+                if((i+offset)!=j) sum += a[i+offset][j] * x[j];
+            }
+            _x[i] = (b[i+offset] - sum) / a[i+offset][i+offset];
+            _error[i] = (_x[i]-x[i+offset]) / _x[i];
         }
 
-        /* Read the input file and fill the global data structure above */
-        get_input(argv[1]);
+        //check error to update and determine whether to continue process
+        calculated_error = check_error();
 
-        /* Check for convergence condition */
-        /* This function will exit the program if the coffeicient will never converge to
-         * the needed absolute error.
-         * This is not expected to happen for this programming assignment.
-         */
-        check_matrix();
-
-        //scatter input to all processes
-        MPI_Scatter(a,send_count,MPI_DOUBLE,_a,send_count,MPI_DOUBLE,0,MPI_COMM_WORLD);
-        MPI_Scatter(x,num,MPI_DOUBLE,_x,num,MPI_DOUBLE,0,MPI_COMM_WORLD);
-        MPI_Scatter(b,lines,MPI_DOUBLE,_b,lines,MPI_DOUBLE,0,MPI_COMM_WORLD);
+        //gather all values from x to update in the next iteration
+        MPI_Allgather(_x,lines,MPI_DOUBLE,x,lines,MPI_DOUBLE,MPI_COMM_WORLD);
     }
-    else {
-        MPI_Scatter(a,send_count,MPI_DOUBLE,_a,send_count,MPI_DOUBLE,0,MPI_COMM_WORLD);
-        MPI_Scatter(x,num,MPI_DOUBLE,_x,num,MPI_DOUBLE,0,MPI_COMM_WORLD);
-        MPI_Scatter(b,lines,MPI_DOUBLE,_b,lines,MPI_DOUBLE,0,MPI_COMM_WORLD);
-    }
-    //do calculation according to the formula
 
-    //gather the data from processes to master
-
-    //do condition checking for each processes
+    //after the loop finished, all processes reaches criteria for all lines
+    //call reduce to get the maximum number of iterations
+    MPI_Reduce(&nit,&nit,1,MPI_INT,MPI_MAX,0,MPI_COMM_WORLD);
 
     //master process write to files
     if(my_rank==0)
