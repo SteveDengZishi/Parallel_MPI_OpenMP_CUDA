@@ -5,6 +5,7 @@
 
 /*** Skeleton for Lab 1 ***/
 int i;
+int j;
 int nit = 0; /* number of iterations */
 FILE * fp;
 char output[100] ="";
@@ -153,6 +154,29 @@ int check_error(){
     return stop_proc;
 }
 
+//debug functions
+void print_matrix_a(){
+    printf("printing a from process %d\n", my_rank);
+    for(i=0;i<num;i++){
+        for(j=0;j<num;j++){
+            printf("%f ",a[i][j]);
+        }
+    }
+    printf("\n");
+}
+
+void print_matrix_x(){
+    printf("printing x from process %d\n", my_rank);
+    for(i=0;i<num;i++) printf("%f ",x[i]);
+    printf("\n");
+}
+
+void print_matrix_b(){
+    printf("printing b from process %d\n", my_rank);
+    for(i=0;i<num;i++) printf("%f ",b[i]);
+    printf("\n");
+}
+
 
 /************************************************************/
 
@@ -180,14 +204,19 @@ int main(int argc, char *argv[])
      * This is not expected to happen for this programming assignment.
      */
     check_matrix();
+    print_matrix_a();
+    print_matrix_x();
+    print_matrix_b();
 
     //calculating task for each processes
     //only after get_input so num & error is defined
-    lines = num/comm_sz;
+    lines = num/comm_sz;    
     send_count = lines*num;
+    printf("The line count in process %d is %d\n", my_rank,lines);
 
     //allocate memory for all local vars according to lines
     _error = malloc(lines*sizeof(float));
+    for(i=0;i<lines;i++) _error[i]=1.0;
     _x = malloc(lines*sizeof(float));
 
     //in different processes, use vars according to bounds
@@ -195,21 +224,28 @@ int main(int argc, char *argv[])
         //if there is one error does not satisfy the requirement, go to the next iteration
         nit++;
         int offset = my_rank * lines;
+        printf("The offset in process %d is %d\n", my_rank,offset);
         for(i=0;i<lines;i++){
             if(_error[i]<=error) continue;
-            float sum = 0; int j;
+            float sum = 0;
             for(j=0;j<num;j++){
                 if((i+offset)!=j) sum += a[i+offset][j] * x[j];
             }
+            printf("The sum in process %d is %f\n", my_rank,sum);
             _x[i] = (b[i+offset] - sum) / a[i+offset][i+offset];
+            int k;
+            for(k=0;k<lines;k++) printf("The _x in process %d is %f\n", my_rank,_x[k]);
             _error[i] = (_x[i]-x[i+offset]) / _x[i];
+            for(k=0;k<lines;k++) printf("The _e in process %d is %f\n", my_rank,_error[k]);
         }
 
         //check error to update and determine whether to continue process
         calculated_error = check_error();
 
         //gather all values from x to update in the next iteration
-        MPI_Allgather(&_x,lines,MPI_DOUBLE,&x,lines,MPI_DOUBLE,MPI_COMM_WORLD);
+        MPI_Allgather(_x,lines,MPI_DOUBLE,x,lines,MPI_DOUBLE,MPI_COMM_WORLD);
+        printf("In process %d the x after all gather is\n", my_rank);
+        print_matrix_x();
     }
 
     //after the loop finished, all processes reaches criteria for all lines
@@ -236,7 +272,8 @@ int main(int argc, char *argv[])
 
         fclose(fp);
 
-        exit(0);
     }
+
     MPI_Finalize();
+    return 0;
 }
