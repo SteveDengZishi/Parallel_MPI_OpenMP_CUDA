@@ -21,6 +21,7 @@ float* b;  /* The constants */
 
 float* _error; // depending on how many lines is it taking in
 float* _x;  //local x, depending on how many lines
+float* global_error;
 int calculated_error = 0; // The calculated error
 
 int lines;
@@ -148,8 +149,8 @@ void get_input(char filename[])
 //checking all lines in current process for whether error falls into acceptable range
 int check_error(){
     int stop_proc = 1;
-    for(i=0;i<lines;i++){
-        if (_error[i]>error) stop_proc = 0;
+    for(i=0;i<num;i++){
+        if (global_error[i]>error) stop_proc = 0;
     }
     return stop_proc;
 }
@@ -197,22 +198,22 @@ int main(int argc, char *argv[])
     //Read for all processes to prevent communication
     get_input(argv[1]);
 
-    printf("it is good so far from process %d\n", my_rank);
+    //printf("it is good so far from process %d\n", my_rank);
     /* Check for convergence condition */
     /* This function will exit the program if the coffeicient will never converge to
      * the needed absolute error.
      * This is not expected to happen for this programming assignment.
      */
     check_matrix();
-    print_matrix_a();
-    print_matrix_x();
-    print_matrix_b();
+    //print_matrix_a();
+    //print_matrix_x();
+    //print_matrix_b();
 
     //calculating task for each processes
     //only after get_input so num & error is defined
     lines = num/comm_sz;    
     send_count = lines*num;
-    printf("The line count in process %d is %d\n", my_rank,lines);
+    //printf("The line count in process %d is %d\n", my_rank,lines);
 
     //allocate memory for all local vars according to lines
     _error = malloc(lines*sizeof(float));
@@ -224,28 +225,37 @@ int main(int argc, char *argv[])
         //if there is one error does not satisfy the requirement, go to the next iteration
         nit++;
         int offset = my_rank * lines;
-        printf("The offset in process %d is %d\n", my_rank,offset);
+        //printf("The offset in process %d is %d\n", my_rank,offset);
+
         for(i=0;i<lines;i++){
-            if(_error[i]<=error) continue;
+
             float sum = 0;
+
             for(j=0;j<num;j++){
                 if((i+offset)!=j) sum += a[i+offset][j] * x[j];
             }
-            printf("The sum in process %d is %f\n", my_rank,sum);
+
+            //printf("The sum in process %d is %f\n", my_rank,sum);
             _x[i] = (b[i+offset] - sum) / a[i+offset][i+offset];
-            int k;
-            for(k=0;k<lines;k++) printf("The _x in process %d is %f\n", my_rank,_x[k]);
-            _error[i] = (_x[i]-x[i+offset]) / _x[i];
-            for(k=0;k<lines;k++) printf("The _e in process %d is %f\n", my_rank,_error[k]);
+
+            //int k;
+            //for(k=0;k<lines;k++) printf("The _x in process %d is %f\n", my_rank,_x[k]);
+            _error[i] = fabs((_x[i]-x[i+offset]) / _x[i]);
+            //for(k=0;k<lines;k++) printf("The _e in process %d is %f\n", my_rank,_error[k]);
         }
 
-        //check error to update and determine whether to continue process
-        calculated_error = check_error();
+        //need to gather all global error and check continuation condition
+        global_error = malloc(num*sizeof(float));
 
+        MPI_Allgather(_error,lines,MPI_FLOAT,global_error,lines,MPI_FLOAT,MPI_COMM_WORLD);
+        //check error to update and determine whether to continue 
+        //it must be done in the global scope
+        calculated_error = check_error();
         //gather all values from x to update in the next iteration
-        MPI_Allgather(_x,lines,MPI_DOUBLE,x,lines,MPI_DOUBLE,MPI_COMM_WORLD);
-        printf("In process %d the x after all gather is\n", my_rank);
-        print_matrix_x();
+        MPI_Allgather(_x,lines,MPI_FLOAT,x,lines,MPI_FLOAT,MPI_COMM_WORLD);
+        //printf("In process %d the x after all gather is\n", my_rank);
+        //print_matrix_x();
+        free(global_error);
     }
 
     //after the loop finished, all processes reaches criteria for all lines
@@ -275,5 +285,6 @@ int main(int argc, char *argv[])
     }
 
     MPI_Finalize();
+
     return 0;
 }
