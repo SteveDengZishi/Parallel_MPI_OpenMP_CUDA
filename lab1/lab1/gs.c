@@ -260,8 +260,8 @@ int main(int argc, char *argv[])
 
     //after the loop finished, all processes reaches criteria for all lines
     //call reduce to get the maximum number of iterations
-    int max;
-    MPI_Reduce(&nit,&max,1,MPI_INT,MPI_MAX,0,MPI_COMM_WORLD);
+    //int max;
+    //MPI_Reduce(&nit,&max,1,MPI_INT,MPI_MAX,0,MPI_COMM_WORLD);
 
     //master process write to files
     if(my_rank==0)
@@ -278,7 +278,7 @@ int main(int argc, char *argv[])
         for( i = 0; i < num; i++)
             fprintf(fp,"%f\n",x[i]);
 
-        printf("total number of iterations: %d\n", max);
+        printf("total number of iterations: %d\n", nit);
 
         fclose(fp);
 
