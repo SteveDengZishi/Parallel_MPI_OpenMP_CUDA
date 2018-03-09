@@ -6,10 +6,10 @@ echo -e "\nRun.sh Producing MPI parallel comp data      Version 1.0"
 echo -e "       Copyright © 2018 Steve DengZishi  New York University\n"
 
 unknown=1
-declare -a procNum=(1 2 10 20 50)
+declare -a procNum=(1 2 10 20 40)
 mpicc -g -Wall -std=c99 -o gs gs.c
 
-for((i=1;i<6;i++))
+for((i=1;i<5;i++))
 do
 	unknown=$(($unknown*10))
 	#echo -e $unknown

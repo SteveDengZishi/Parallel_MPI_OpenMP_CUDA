@@ -215,6 +215,16 @@ int main(int argc, char *argv[])
     send_count = lines*num;
     //printf("The line count in process %d is %d\n", my_rank,lines);
 
+    //check whether the task is divisible, quit if not the case
+    if(num % comm_sz != 0 && my_rank==0){
+        printf("\nNumber of unknown should be perfectly divisible by number of processes!\n");
+        printf("Please check your input before you proceed\n");
+    }
+
+    if(num % comm_sz != 0){
+        exit(1);
+    }
+
     //allocate memory for all local vars according to lines
     _error = malloc(lines*sizeof(float));
     for(i=0;i<lines;i++) _error[i]=1.0;
