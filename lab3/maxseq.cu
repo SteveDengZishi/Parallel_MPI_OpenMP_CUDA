@@ -3,7 +3,9 @@
 #include <time.h>
 #include <cuda.h>
 
-unsigned int getmax(unsigned int *, unsigned int);
+__global__ void getmaxcu(){
+
+}
 
 int main(int argc, char *argv[])
 {
@@ -19,10 +21,22 @@ int main(int argc, char *argv[])
     }
    
     size = atol(argv[1]);
+    numbers = (unsigned int *)malloc(size * sizeof(unsigned int));
+
+    if( !numbers )
+    {
+       printf("Unable to allocate mem for an array of size %u\n", size);
+       exit(1);
+    }
+
+    srand(time(NULL)); // setting a seed for the random number generator
+    // Fill-up the array with random numbers from 0 to size-1 
+    for( i = 0; i < size; i++) numbers[i] = rand()  % size;       
 
     //allocating on the device
-    int* num_device;
-    cudaError_t error = cudaMalloc((void**)&num_device, size * sizeof(unsigned int));
+    unsigned int max;
+    unsigned int* numbers_device, max_device;
+    cudaError_t error = cudaMalloc((void**)&numbers_device, size * sizeof(unsigned int));
 
     //error handling
     if(error != cudaSuccess){ // print the CUDA error message and exit printf("CUDA error: %s\n",
@@ -30,10 +44,16 @@ int main(int argc, char *argv[])
       exit(-1);
     }
 
-    srand(time(NULL)); // setting a seed for the random number generator
-    // Fill-up the array with random numbers from 0 to size-1 
-    for( i = 0; i < size; i++)
-       numbers[i] = rand()  % size;    
+    error = cudaMalloc((void**)&max_device, sizeof(unsigned int))
+
+    if(error != cudaSuccess){ // print the CUDA error message and exit printf("CUDA error: %s\n",
+      cudaGetErrorString(error);
+      exit(-1);
+    }
+
+    cudaMemcpy(num_device, numbers, size * sizeof(unsigned int), cudaMemcpyHostToDevice);
+
+    //lauch pre-defined kernel code
    
     printf(" The maximum number in the array is: %u\n", 
            getmax(numbers, size));
@@ -47,7 +67,7 @@ int main(int argc, char *argv[])
    input: pointer to an array of long int
           number of elements in the array
    output: the maximum number of the array
-*/
+
 unsigned int getmax(unsigned int num[], unsigned int size)
 {
   unsigned int i;
@@ -60,3 +80,4 @@ unsigned int getmax(unsigned int num[], unsigned int size)
   return( max );
 
 }
+*/
