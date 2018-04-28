@@ -68,12 +68,15 @@ int main(int argc, char *argv[])
     //lauch pre-defined kernel code
     int block_size=512;
     int block_num=ceil((double)size/(double)block_size);
-    getmaxcu<<<block_num,block_size>>>(num_device,max_device,size);
+    getmaxcu<<<block_num,block_size>>>(numbers_device,max_device,size);
 
     printf(" The maximum number in the array is: %u\n", 
            getmax(numbers, size));
 
+    //memory management
     free(numbers);
+    cudaFree(numbers_device);
+    cudaFree(max_device);
     exit(0);
 }
 
