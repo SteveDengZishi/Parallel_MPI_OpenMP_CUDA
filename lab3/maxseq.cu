@@ -5,6 +5,27 @@
 
 __global__ void getmaxcu(unsigned int* num_device, unsigned int* max_device, unsigned int size){
 
+    __device__ __shared__ unsigned int shared_num[512];
+    __device__ __shared__ unsigned int shared_max=0;
+
+    //copy from device global memory to device shared memory
+    shared_num[threadIdx.x] = numbers_device[blockDim.x * blockIdx.x + threadIdx.x];
+    __syncthreads();
+
+    //use reduction to find max
+    unsigned int tid=threadIdx.x;
+    unsigned int i;
+    for(i=blockDim.x>>1;i>0;i>>=1){
+      __syncthreads();
+      if(tid<i){
+        shared_num[tid]=max(shared_num[tid],shared_num[tid+i]);
+      }
+    }
+    __syncthreads();
+    //shared_num[0] is the maximum by now in each blocks
+    if(threadIdx.x==0){
+      atomicMax(max_device, shared_max);
+    }
 }
 
 int main(int argc, char *argv[])
@@ -36,16 +57,19 @@ int main(int argc, char *argv[])
     //checking and printing device properties
     int device;
     cudaDeviceProp cuda_properties;
+    cudaGetDevice(&device);
     cudaGetDeviceProperties(&cuda_properties,device);
-    printf("Device Properties for %s\n",cuda_properties.name)
+    printf("Device Properties for %s\n",cuda_properties.name);
+    printf("================================================\n");
     printf("Total Global Memory Size is %u\n", cuda_properties.totalGlobalMem);
     printf("Shared Memory per block is %u\n", cuda_properties.sharedMemPerBlock);
     printf("Warp Size is %d and register per block is %d\n", cuda_properties.warpSize, cuda_properties.regsPerBlock);
     printf("Max threads per block is %d\n", cuda_properties.maxThreadsPerBlock);
+    printf("================================================\n");
 
-
+    
     //allocating on the device
-    unsigned int max;
+    unsigned int max=0;
     unsigned int* numbers_device, max_device;
     cudaError_t error = cudaMalloc((void**)&numbers_device, size * sizeof(unsigned int));
 
@@ -62,22 +86,26 @@ int main(int argc, char *argv[])
       exit(-1);
     }
 
-    cudaMemcpy(num_device, numbers, size * sizeof(unsigned int), cudaMemcpyHostToDevice);
-    //There is no need to copy max_device as it is undefined
+    cudaMemcpy(numbers_device, numbers, size * sizeof(unsigned int), cudaMemcpyHostToDevice);
+    cudaMemcpy(max_device, max, sizeof(unsigned int), cudaMemcpyHostToDevice);
 
     //lauch pre-defined kernel code
     int block_size=512;
     int block_num=ceil((double)size/(double)block_size);
+
+    //invoke kernel
     getmaxcu<<<block_num,block_size>>>(numbers_device,max_device,size);
 
-    printf(" The maximum number in the array is: %u\n", 
-           getmax(numbers, size));
+    //copy max_device back to host
+    cudaMemcpy(&max, max_device, sizeof(unsigned int), cudaMemcpyDeviceToHost);
+
+    printf(" The maximum number in the array is: %u\n", max);
 
     //memory management
     free(numbers);
     cudaFree(numbers_device);
     cudaFree(max_device);
-    exit(0);
+    exit(0); 
 }
 
 
