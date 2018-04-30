@@ -3,10 +3,9 @@
 #include <time.h>
 #include <cuda.h>
 
-__global__ void getmaxcu(unsigned int* num_device, unsigned int* max_device, unsigned int size){
+__global__ void getmaxcu(unsigned int* numbers_device, unsigned int* max_device, unsigned int size){
 
-    __device__ __shared__ unsigned int shared_num[512];
-    __device__ __shared__ unsigned int shared_max=0;
+    __device__ __shared__ unsigned int shared_num[1024];
 
     //copy from device global memory to device shared memory
     shared_num[threadIdx.x] = numbers_device[blockDim.x * blockIdx.x + threadIdx.x];
@@ -24,7 +23,7 @@ __global__ void getmaxcu(unsigned int* num_device, unsigned int* max_device, uns
     __syncthreads();
     //shared_num[0] is the maximum by now in each blocks
     if(threadIdx.x==0){
-      atomicMax(max_device, shared_max);
+      atomicMax(max_device, shared_num[0]);
     }
 }
 
@@ -54,6 +53,7 @@ int main(int argc, char *argv[])
     // Fill-up the array with random numbers from 0 to size-1 
     for( i = 0; i < size; i++) numbers[i] = rand()  % size;  
 
+    /*
     //checking and printing device properties
     int device;
     cudaDeviceProp cuda_properties;
@@ -66,11 +66,12 @@ int main(int argc, char *argv[])
     printf("Warp Size is %d and register per block is %d\n", cuda_properties.warpSize, cuda_properties.regsPerBlock);
     printf("Max threads per block is %d\n", cuda_properties.maxThreadsPerBlock);
     printf("================================================\n");
-
+    */
     
     //allocating on the device
     unsigned int max=0;
-    unsigned int* numbers_device, max_device;
+    unsigned int * numbers_device;
+    unsigned int * max_device;
     cudaError_t error = cudaMalloc((void**)&numbers_device, size * sizeof(unsigned int));
 
     //error handling
@@ -79,7 +80,7 @@ int main(int argc, char *argv[])
       exit(-1);
     }
 
-    error = cudaMalloc((void**)&max_device, sizeof(unsigned int))
+    error = cudaMalloc((void**)&max_device, sizeof(unsigned int));
 
     if(error != cudaSuccess){ // print the CUDA error message and exit printf("CUDA error: %s\n",
       cudaGetErrorString(error);
@@ -87,19 +88,19 @@ int main(int argc, char *argv[])
     }
 
     cudaMemcpy(numbers_device, numbers, size * sizeof(unsigned int), cudaMemcpyHostToDevice);
-    cudaMemcpy(max_device, max, sizeof(unsigned int), cudaMemcpyHostToDevice);
+    cudaMemcpy(max_device, &max, sizeof(unsigned int), cudaMemcpyHostToDevice);
 
     //lauch pre-defined kernel code
-    int block_size=512;
+    int block_size=1024;
     int block_num=ceil((double)size/(double)block_size);
 
     //invoke kernel
     getmaxcu<<<block_num,block_size>>>(numbers_device,max_device,size);
-
+    cudaDeviceSynchronize();
     //copy max_device back to host
     cudaMemcpy(&max, max_device, sizeof(unsigned int), cudaMemcpyDeviceToHost);
 
-    printf(" The maximum number in the array is: %u\n", max);
+    printf("The maximum number in the array is: %u\n", max);
 
     //memory management
     free(numbers);
